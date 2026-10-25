@@ -20,7 +20,14 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
 #top{top:max(10px,env(safe-area-inset-top));left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));justify-content:space-between;gap:8px;pointer-events:none}
 #top>*{pointer-events:auto}
 #jar{width:60px;height:76px;display:block;flex:none}
-#hud{flex:1 1 0;display:flex;justify-content:center;align-items:center;min-width:0;pointer-events:none}
+#mid{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:8px;min-width:0;pointer-events:none}
+#gms{display:flex;gap:4px;padding:4px;border-radius:24px;background:rgba(255,255,255,.7);box-shadow:0 3px 10px rgba(0,0,0,.1);pointer-events:auto}
+#gms button{display:flex;align-items:center;gap:4px;height:40px;padding:0 12px;border-radius:20px;border:2px solid transparent;background:transparent;font:700 14px -apple-system,'Segoe UI',Roboto,sans-serif;color:#4a5568;transition:box-shadow .15s}
+#gms button i{font-style:normal;font-size:20px;font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif}
+#gms button.on{background:#fff;border-color:#7a5af5;color:#2c3e50;box-shadow:0 2px 6px rgba(122,90,245,.3)}
+#gms button.hold{box-shadow:0 0 0 7px rgba(255,138,160,.75);transition:box-shadow var(--hold,450ms) linear}
+@media(max-width:560px){#gms button{width:50px;padding:0;justify-content:center;height:42px}#gms button span{display:none}#gms button i{font-size:22px}}
+#hud{display:flex;justify-content:center;align-items:center;min-width:0;pointer-events:none}
 #hud>*{pointer-events:auto}
 @keyframes pin{0%{transform:scale(.2)}100%{transform:scale(1)}}
 @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
@@ -54,6 +61,8 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
 #mpop .gb.on{border-color:#7a5af5;box-shadow:0 0 0 3px rgba(122,90,245,.3)}
 #mpop .grid{display:grid;gap:8px;justify-content:center}
 #mbtn{position:relative}
+#mbtn .ic4{display:grid;grid-template-columns:1fr 1fr;gap:4px;width:30px;height:30px;margin:auto}
+#mbtn .ic4 b{border-radius:5px}
 #mbtn .bd{position:absolute;right:-7px;top:-7px;width:28px;height:28px;border-radius:14px;background:#fff;font-size:15px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 5px rgba(0,0,0,.25)}
 #mpop .bar10{grid-column:1/-1;height:4px;border-radius:2px;background:#ffd1dc;overflow:hidden}
 #mpop .bar10 i{display:block;height:100%;width:100%;background:#ff8aa0;transform-origin:left}
@@ -104,7 +113,7 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
 <canvas id="c"></canvas>
 <div class="bar" id="top">
   <canvas id="jar" aria-label="Банка с пузырями"></canvas>
-  <div id="hud"></div>
+  <div id="mid"><div id="gms"></div><div id="hud"></div></div>
   <button class="btn" id="dn" aria-label="День или ночь">🌙</button>
   <button class="btn" id="gear" aria-label="Для родителей: удерживайте">⚙️</button>
 </div>
@@ -1487,7 +1496,7 @@ function findPop(b) {
 // ----- Поймай -----
 const C = { round: 1, need: 10, got: 0, lives: 5, state: 'off', until: 0 };
 const roundNeed = r => Math.min(30, 8 + (r - 1) * 2);
-const roundSpeed = r => Math.min(2.4, 1 + (r - 1) * .12);
+const roundSpeed = r => Math.min(1.9, 1 + (r - 1) * .07);
 function startRound(r) {
   C.round = r; C.need = roundNeed(r); C.got = 0; C.lives = 5; C.state = 'intro'; C.until = now() + 2300;
   for (const b of bubbles) flashes.push({ x: b.x, y: b.y, r: b.r, a: .3 });
@@ -1541,7 +1550,7 @@ function setGame(g, silent) {
 const hudEl = $('hud');
 function renderHud(hit) {
   if (!hudEl) return;
-  hudEl.innerHTML = '';
+  hudEl.innerHTML = ''; requestAnimationFrame(layout);
   if (gm === 'find' && F2.tgt) {
     const b = document.createElement('button'); b.className = 'card' + (F2.ok ? ' ok' : ''); b.setAttribute('aria-label', 'Что ищем');
     if (F2.kind === 'sound' && !F2.ok) { const q = document.createElement('span'); q.className = 'q'; q.textContent = '?'; b.appendChild(q); }
@@ -1596,7 +1605,7 @@ function spawn(first) {
   }
   const nb = makeBubble(x, y, rf, type, null, idx);
   if (gm === 'find') nb.vy0 *= .72;
-  if (gm === 'catch') nb.vy0 = -(H / 420) * rnd(.9, 1.15) * roundSpeed(C.round) * (type === 'life' ? .8 : 1);
+  if (gm === 'catch') nb.vy0 = -(H / 640) * rnd(.9, 1.1) * roundSpeed(C.round) * (type === 'life' ? .8 : 1);
   nb.vy = nb.vy0; bubbles.push(nb);
 }
 function jarCap() { return count < 30 ? 30 : 20; }
@@ -1822,17 +1831,21 @@ function holdBtn(el, fn, ms, need) {
   ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => el.addEventListener(ev, () => { if (tm) { stop(); if (ev === 'pointerup') showHint('Удерживайте кнопку'); } }));
 }
 const modesEl = $('modes'), mpop = $('mpop'), mbtn = $('mbtn'); let mb = [], popT = 0;
+const gmsEl = $('gms');
 const GMS = [['learn', '📖', 'Учим'], ['find', '🔍', 'Ищем'], ['catch', '🎯', 'Ловим']];
-function updMbtn() { mbtn.innerHTML = MODES[md].ic + (gm !== 'learn' ? '<span class="bd">' + (gm === 'find' ? '🔍' : '🎯') + '</span>' : ''); }
+function updMbtn() {
+  mbtn.innerHTML = '<span class="ic4"><b style="background:#ff8aa0"></b><b style="background:#7fc8ff"></b><b style="background:#8fe0b0"></b><b style="background:#ffd34d"></b></span>';
+  mbtn.setAttribute('aria-label', 'Темы: удерживайте');
+  if (!gmsEl) return;
+  gmsEl.innerHTML = '';
+  GMS.forEach(([g, ic, lab]) => {
+    const b = document.createElement('button'); b.className = g === gm ? 'on' : ''; b.innerHTML = '<i>' + ic + '</i><span>' + lab + '</span>'; b.setAttribute('aria-label', lab);
+    holdBtn(b, () => { if (g !== gm) setGame(g); }, 450, () => S.hold && g !== gm);
+    gmsEl.appendChild(b);
+  });
+}
 function renderModes() {
   mpop.innerHTML = ''; mb = [];
-  const row = document.createElement('div'); row.className = 'gmrow';
-  GMS.forEach(([g, ic, lab]) => {
-    const b = document.createElement('button'); b.className = 'gb' + (g === gm ? ' on' : ''); b.innerHTML = ic + '<span>' + lab + '</span>'; b.setAttribute('aria-label', lab);
-    b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); audio(); closeModes(); if (g !== gm) setGame(g); });
-    row.appendChild(b);
-  });
-  mpop.appendChild(row);
   const grid = document.createElement('div'); grid.className = 'grid';
   const vis = MODES.map((m, k) => k).filter(k => S.modes[k]);
   grid.style.gridTemplateColumns = 'repeat(' + Math.min(vis.length, W < 360 ? 4 : 5) + ', auto)';
@@ -2026,8 +2039,8 @@ function drawHand(k) {
 //  РАСКЛАДКА И ГЛАВНЫЙ ЦИКЛ
 // =====================================================================
 function layout() {
-  const t = $('top').getBoundingClientRect(), m = modesEl.getBoundingClientRect();
-  TOP = t.bottom + 6; BOT = m.height ? H - m.top + 8 : 80;
+  const t = $('top').getBoundingClientRect(), m = modesEl.getBoundingClientRect(), g2 = gmsEl.getBoundingClientRect();
+  TOP = Math.max(t.bottom, g2.bottom) + 6; BOT = m.height ? H - m.top + 8 : 80;
   placeActors();
 }
 function placeActors() {
@@ -2063,7 +2076,7 @@ function frame(t) {
   ctx.drawImage(bgC, 0, 0, W, H);
   if (fadeA > 0) { ctx.globalAlpha = fadeA; ctx.drawImage(fadeC, 0, 0, W, H); ctx.globalAlpha = 1; fadeA -= .025 * k; }
   worldLive(t, k);
-  if (started && !rested && (gm !== 'catch' || C.state === 'play')) { cd -= k; if (cd <= 0) { spawn(false); cd = gm === 'catch' ? Math.max(13, 32 / roundSpeed(C.round)) : gm === 'find' ? 30 : 36; } }
+  if (started && !rested && (gm !== 'catch' || C.state === 'play')) { cd -= k; if (cd <= 0) { spawn(false); cd = gm === 'catch' ? Math.max(20, 44 / roundSpeed(C.round)) : gm === 'find' ? 30 : 36; } }
   if (gm === 'catch' && C.state === 'intro' && now() > C.until) { C.state = 'play'; cd = 0; }
   if (gm === 'find' && F2.tgt && !F2.ok && started && !rested) {
     const tb = bubbles.find(o => o.it === F2.tgt && o.y > TOP && o.y < H - BOT);
