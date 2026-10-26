@@ -49,6 +49,10 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
 .btn.hold{box-shadow:0 0 0 8px rgba(255,138,160,.75);transition:box-shadow var(--hold,900ms) linear}
 #gear{width:44px;height:44px;font-size:19px;opacity:.5;flex:none}
 #dn{flex:none;font-size:26px}
+#aud{position:fixed;right:max(10px,env(safe-area-inset-right));bottom:calc(max(10px,env(safe-area-inset-bottom)) + 6px);display:flex;gap:8px;z-index:6}
+#aud .btn{width:46px;height:46px;font-size:21px;position:relative}
+#aud .btn.off{opacity:.85}
+#aud .btn.off::after{content:'';position:absolute;left:9px;right:9px;top:50%;height:4px;margin-top:-2px;background:#e8455a;border-radius:2px;transform:rotate(-45deg);box-shadow:0 0 0 1.5px #fff}
 #modes{bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%)}
 #mbtn{width:80px;height:80px;border-radius:40px;border:0;padding:0;background:conic-gradient(from 20deg,#ff8aa0,#ffc83d,#8fe0b0,#7fc8ff,#c8a8ff,#ff8aa0);box-shadow:0 6px 18px rgba(60,80,130,.25);animation:wig 7s ease-in-out infinite}
 #mbtn.hold{box-shadow:0 0 0 10px rgba(255,138,160,.75);animation:none}
@@ -150,6 +154,7 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
   <button class="btn" id="gear" aria-label="Для родителей: удерживайте">⚙️</button>
 </div>
 <div class="bar" id="modes"><button class="btn" id="mbtn" aria-label="Выбор режима: удерживайте"></button></div>
+<div id="aud"><button class="btn" id="sndb" aria-label="Звук: вкл/выкл">🔊</button><button class="btn" id="musb" aria-label="Музыка: вкл/выкл">🎵</button></div>
 <div id="mpop"></div>
 <div id="hint"></div>
 <div class="ov on" id="start"><div id="wel">
@@ -242,10 +247,10 @@ function audio() {
     lim.threshold.value = -3; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = .001; lim.release.value = .08;
     master.connect(comp); comp.connect(lim); lim.connect(ac.destination);
     musBus = ac.createGain(); musBus.gain.value = 0; musBus.connect(master);
-    sfxBus = ac.createGain(); sfxBus.gain.value = S.sfx; sfxBus.connect(master);
+    sfxBus = ac.createGain(); sfxBus.gain.value = S.sndOff ? 0 : S.sfx; sfxBus.connect(master);
     ambBus = ac.createGain(); ambBus.gain.value = 0; ambBus.connect(master);
-    voiceBus = ac.createGain(); voiceBus.gain.value = S.voice; voiceBus.connect(master);
-    itemBus = ac.createGain(); itemBus.gain.value = S.voice * 1.3; itemBus.connect(master);
+    voiceBus = ac.createGain(); voiceBus.gain.value = S.sndOff ? 0 : S.voice; voiceBus.connect(master);
+    itemBus = ac.createGain(); itemBus.gain.value = S.sndOff ? 0 : S.voice * 1.3; itemBus.connect(master);
     synthBus = ac.createGain(); synthBus.gain.value = 2.6; synthBus.connect(itemBus);
     noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
     const d = noiseBuf.getChannelData(0);
@@ -412,7 +417,7 @@ function smp(k, o) {
 let ambT = 0;
 function ambTick() {
   const want = MODES[md].water && !rested && !document.hidden && started;
-  ambBus.gain.setTargetAtTime(want ? .3 * S.sfx : 0, ac.currentTime, .6);
+  ambBus.gain.setTargetAtTime(want && !S.sndOff ? .3 * S.sfx : 0, ac.currentTime, .6);
   if (!want || !buf.amb) { ambT = 0; return; }
   const t0 = Math.max(ambT, ac.currentTime + .05);
   if (t0 > ac.currentTime + 1) return;
@@ -632,10 +637,10 @@ function initMusic() {
   setInterval(() => { sched(); ambTick(); }, 250);
   applyMus(.5);
 }
-const musLevel = () => S.mus * (night ? .6 : 1) * (ducked ? .4 : 1) * (rested ? 0 : 1);
+const musLevel = () => (S.musOff ? 0 : S.mus) * (night ? .6 : 1) * (ducked ? .4 : 1) * (rested ? 0 : 1);
 function applyMus(tc) { if (musBus) musBus.gain.setTargetAtTime(musLevel(), ac.currentTime, tc || .2); }
 function duck(on) { if (ducked !== on) { ducked = on; applyMus(.12); } }
-const musSilent = () => !started || rested || document.hidden || S.mus < .01;
+const musSilent = () => !started || rested || document.hidden || S.mus < .01 || S.musOff;
 function padChord(notes, t, bar) {
   for (const m of notes) for (const det of [-7, 7]) {
     const o = ac.createOscillator(), g = ac.createGain();
@@ -746,7 +751,7 @@ function say(text, after, key, vk) {
     curClip = s2; duck(true); setTimeout(fin, (c.d + .4) * 1000);
     return;
   }
-  if (!text || !('speechSynthesis' in window) || S.voice < .01) { setTimeout(fin, 60); return; }
+  if (!text || !('speechSynthesis' in window) || S.voice < .01 || S.sndOff) { setTimeout(fin, 60); return; }
   const go = () => {
     if (my !== sayTok) return;
     try {
@@ -2372,6 +2377,19 @@ function toggleDay() {
 function autoNight() { if (S.night === 'auto') { const h = new Date().getHours(); setNight(h >= 20 || h < 7); } else setNight(S.night === 'night'); }
 holdBtn($('gear'), openPanel, 700);
 holdBtn($('dn'), toggleDay, 450, () => S.hold);
+// кнопки «звук» и «музыка»
+function applySnd() {
+  if (!ac || !sfxBus) return; const k = S.sndOff ? 0 : 1, t = ac.currentTime;
+  sfxBus.gain.setTargetAtTime(S.sfx * k, t, .05); voiceBus.gain.setTargetAtTime(S.voice * k, t, .05); itemBus.gain.setTargetAtTime(S.voice * 1.3 * k, t, .05);
+  if (!k) { try { speechSynthesis.cancel(); } catch (e) {} }
+}
+function updAud() {
+  $('sndb').textContent = S.sndOff ? '🔇' : '🔊'; $('sndb').classList.toggle('off', !!S.sndOff);
+  $('musb').classList.toggle('off', !!S.musOff);
+}
+holdBtn($('sndb'), () => { S.sndOff = !S.sndOff; save(); applySnd(); updAud(); showHint(S.sndOff ? 'Звук выключен' : 'Звук включён'); }, 450, () => S.hold);
+holdBtn($('musb'), () => { S.musOff = !S.musOff; save(); applyMus(.2); updAud(); showHint(S.musOff ? 'Музыка выключена' : 'Музыка включена'); }, 450, () => S.hold);
+updAud();
 let panelOpen = false;
 function openPanel() { closeModes(); panelOpen = true; $('panel').classList.add('on'); renderPanel(); }
 function closePanel() { panelOpen = false; recStop(); $('panel').classList.remove('on'); save(); }
@@ -2400,8 +2418,8 @@ function renderPanel() {
   const gb = el('button', { class: 'pbig', text: '🫧 Все шарики: посмотреть и послушать' }); gb.addEventListener('click', () => { closePanel(); openGallery(md); }); p.appendChild(gb);
   p.appendChild(el('h3', { text: 'Громкость' }));
   p.appendChild(slider('Музыка', S.mus, 0, 1, .05, v => { S.mus = v; if (ac) applyMus(.1); }));
-  p.appendChild(slider('Звуки', S.sfx, 0, 1, .05, v => { S.sfx = v; if (sfxBus) sfxBus.gain.setTargetAtTime(v, ac.currentTime, .05); }));
-  p.appendChild(slider('Голос', S.voice, 0, 1, .05, v => { S.voice = v; if (voiceBus) voiceBus.gain.setTargetAtTime(v, ac.currentTime, .05); itemBus.gain.setTargetAtTime(v * 1.3, ac.currentTime, .05); }));
+  p.appendChild(slider('Звуки', S.sfx, 0, 1, .05, v => { S.sfx = v; applySnd(); }));
+  p.appendChild(slider('Голос', S.voice, 0, 1, .05, v => { S.voice = v; applySnd(); }));
   p.appendChild(el('h3', { text: 'Голос и звуки' }));
   const vopts = XV ? [['auto', XV.name || 'Новый'], ['irina', 'Ирина'], ['sys', 'Устройства']] : [['auto', 'Ирина'], ['sys', 'Устройства']];
   p.appendChild(seg('Голос', vopts, !XV && S.voiceSrc === 'irina' ? 'auto' : S.voiceSrc, v => { S.voiceSrc = v; save(); audio(); sayK('pr0'); renderPanel(); }));
