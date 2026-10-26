@@ -52,7 +52,7 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
 #aud{position:fixed;right:max(10px,env(safe-area-inset-right));bottom:calc(max(10px,env(safe-area-inset-bottom)) + 6px);display:flex;gap:8px;z-index:6}
 #aud .btn{width:46px;height:46px;font-size:21px;position:relative}
 #aud .btn.off{opacity:.85}
-#aud .btn.off::after{content:'';position:absolute;left:9px;right:9px;top:50%;height:4px;margin-top:-2px;background:#e8455a;border-radius:2px;transform:rotate(-45deg);box-shadow:0 0 0 1.5px #fff}
+#musb.off::after{content:'';position:absolute;left:9px;right:9px;top:50%;height:4px;margin-top:-2px;background:#e8455a;border-radius:2px;transform:rotate(-45deg);box-shadow:0 0 0 1.5px #fff}
 #modes{bottom:max(12px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%)}
 #mbtn{width:80px;height:80px;border-radius:40px;border:0;padding:0;background:conic-gradient(from 20deg,#ff8aa0,#ffc83d,#8fe0b0,#7fc8ff,#c8a8ff,#ff8aa0);box-shadow:0 6px 18px rgba(60,80,130,.25);animation:wig 7s ease-in-out infinite}
 #mbtn.hold{box-shadow:0 0 0 10px rgba(255,138,160,.75);animation:none}
@@ -2387,8 +2387,8 @@ function updAud() {
   $('sndb').textContent = S.sndOff ? '🔇' : '🔊'; $('sndb').classList.toggle('off', !!S.sndOff);
   $('musb').classList.toggle('off', !!S.musOff);
 }
-holdBtn($('sndb'), () => { S.sndOff = !S.sndOff; save(); applySnd(); updAud(); showHint(S.sndOff ? 'Звук выключен' : 'Звук включён'); }, 450, () => S.hold);
-holdBtn($('musb'), () => { S.musOff = !S.musOff; save(); applyMus(.2); updAud(); showHint(S.musOff ? 'Музыка выключена' : 'Музыка включена'); }, 450, () => S.hold);
+holdBtn($('sndb'), () => { S.sndOff = !S.sndOff; save(); applySnd(); updAud(); }, 450, () => S.hold);
+holdBtn($('musb'), () => { S.musOff = !S.musOff; save(); applyMus(.2); updAud(); }, 450, () => S.hold);
 updAud();
 let panelOpen = false;
 function openPanel() { closeModes(); panelOpen = true; $('panel').classList.add('on'); renderPanel(); }
