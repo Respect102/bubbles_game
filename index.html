@@ -2710,6 +2710,17 @@ addEventListener('pointermove', e => {
     for (const p of sp) if (Math.hypot(p.x - x, p.y - y) < 70) { p.vx += vx * .02; p.vy += vy * .01; }
   }
 });
+// шарик поверх кнопки: первое касание лопает шарик, кнопка не срабатывает
+let swallowT = 0, swallowEl = null;
+function bubbleAt(x, y) { for (let i = bubbles.length - 1; i >= 0; i--) { const b = bubbles[i]; if (Math.hypot(x - b.x, y - b.y) < b.r * 1.05) return b; } return null; }
+window.addEventListener('pointerdown', e => {
+  if (!started || e.target === cv || document.querySelector('.ov.on') || mpop.classList.contains('on')) return;
+  if (!e.target.closest || !e.target.closest('button, #jar, #hud, #gms, #mbtn, .btn, .card')) return;
+  const b = bubbleAt(e.clientX, e.clientY); if (!b) return;
+  e.preventDefault(); e.stopImmediatePropagation(); swallowT = now(); swallowEl = e.target;
+  audio(); touched(); pop(b);
+}, true);
+window.addEventListener('click', e => { if (swallowEl && now() - swallowT < 800 && (e.target === swallowEl || (swallowEl.contains && swallowEl.contains(e.target)))) { e.preventDefault(); e.stopImmediatePropagation(); swallowEl = null; } }, true);
 function ptrUp(e) { downs.delete(e.pointerId); endBlow(e.pointerId); }
 addEventListener('pointerup', ptrUp); addEventListener('pointercancel', ptrUp);
 addEventListener('blur', () => { downs.clear(); for (const [id, q] of blows) if (q.src === 'touch') { stopBlow(q); blows.delete(id); } });
