@@ -118,13 +118,6 @@ html,body{width:100%;height:100%;overflow:hidden;overscroll-behavior:none;backgr
 .mchk{display:flex;flex-wrap:wrap;gap:6px;padding:4px 0}
 .mchk button{width:46px;height:46px;border-radius:12px;border:2px solid #e3e8f0;background:#fff;font-size:22px;opacity:.35;font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif}
 .mchk button.on{opacity:1;border-color:#ff8aa0}
-.rec{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #f2f4f8}
-.rec .e{width:34px;height:34px;flex:none}
-.rec .n{flex:1;font-size:15px}
-.rec button{height:34px;min-width:40px;border-radius:17px;border:1px solid #e0e5ee;background:#fff;font-size:14px;padding:0 10px;color:#2c3e50;font-family:inherit}
-.rec button.r{color:#e0335a;border-color:#f5c2cf}
-.rec button.r.on{background:#e0335a;color:#fff}
-.rec button[disabled]{opacity:.3}
 .note{font-size:13px;color:#7a8aa0;line-height:1.45;margin:4px 0 6px}
 #gal{z-index:13;justify-content:flex-start;gap:0;background:#f4f8ff}
 #gal,#gal *{touch-action:pan-y}
@@ -187,7 +180,7 @@ const now = () => performance.now();
 const def = (v, d) => v == null ? d : v;
 
 // ---------- настройки (хранятся только в этом браузере) ----------
-const DEF = { ver: 12, gm: 'learn', voiceSrc: 'auto', mus: .18, sfx: .3, voice: 1, rate: .85, voiceName: '', night: 'auto', rest: 15, modes: [1, 1, 1, 1, 1, 1, 1, 1, 1], tilt: false, mic: false, hold: true, phrases: true, livePop: true };
+const DEF = { ver: 12, gm: 'learn', voiceSrc: 'auto', mus: .18, sfx: .3, voice: 1, rate: .85, voiceName: '', night: 'auto', rest: 15, modes: [1, 1, 1, 1, 1, 1, 1, 1, 1], tilt: false, hold: true, phrases: true, livePop: true };
 let S = Object.assign({}, DEF);
 let stored = {};
 try { stored = JSON.parse(localStorage.getItem('symphony9') || '{}') || {}; } catch (e) {}
@@ -255,7 +248,7 @@ function audio() {
     noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    loadSamples(); initMusic(); decodeRecs();
+    loadSamples(); initMusic();
   }
   if (ac.state !== 'running' && !document.hidden) ac.resume();
   return ac;
@@ -734,7 +727,6 @@ function say(text, after, key, vk) {
   const my = ++sayTok; let done = false;
   const fin = () => { if (done) return; done = true; if (my === sayTok) { curClip = null; duck(false); if (after) after(); } };
   stopClip();
-  if (key && recBuf[key]) { playRec(key, fin); duck(true); return; }
   const c = vk && ac ? vclip(vk) : null;
   if (c) {
     try { if (speechSynthesis.speaking) speechSynthesis.cancel(); } catch (e) {}
@@ -744,7 +736,7 @@ function say(text, after, key, vk) {
     curClip = s2; duck(true); setTimeout(fin, (c.d + .4) * 1000);
     return;
   }
-  // только голос Ксюши: если фраза ещё загружается — ждём до 2 с, иначе молчим
+  // только записанный голос: если фраза ещё загружается — ждём до 2 с, иначе молчим
   if (!vk || !ac || S.voice < .01 || S.sndOff) { setTimeout(fin, 60); return; }
   const t0 = now();
   const wait = () => { if (my !== sayTok) return; if (vclip(vk)) { sayTok--; say(text, after, key, vk); return; } if (now() - t0 > 2000) { fin(); return; } setTimeout(wait, 100); };
@@ -794,65 +786,6 @@ function speakItem(it, extraAfter) {
   }, key, ph[1]);
 }
 
-// ---------- запись голоса родителя (IndexedDB) ----------
-let db = null; const recBlob = {}, recBuf = {}, recOff = {};
-function dbOpen(cb) {
-  try {
-    const r = indexedDB.open('symphony9', 1);
-    r.onupgradeneeded = () => r.result.createObjectStore('rec');
-    r.onsuccess = () => {
-      db = r.result;
-      const tx = db.transaction('rec', 'readonly'), cur = tx.objectStore('rec').openCursor();
-      cur.onsuccess = () => { const c = cur.result; if (c) { recBlob[c.key] = c.value; c.continue(); } else if (cb) cb(); };
-    };
-  } catch (e) {}
-}
-function blobBuf(blob, ok) {
-  if (blob.arrayBuffer) blob.arrayBuffer().then(ok).catch(() => {});
-  else { const fr = new FileReader(); fr.onload = () => ok(fr.result); fr.readAsArrayBuffer(blob); }
-}
-function decodeRec(k) {
-  if (!ac || !recBlob[k]) return;
-  blobBuf(recBlob[k], ab => decode(ab, b => {
-    const d = b.getChannelData(0); let i = 0, mx = 0;
-    for (let j = 0; j < d.length; j++) mx = Math.max(mx, Math.abs(d[j]));
-    while (i < d.length && Math.abs(d[i]) < mx * .08) i++;
-    recOff[k] = Math.max(0, i / b.sampleRate - .04); recBuf[k] = b;
-  }));
-}
-function decodeRecs() { for (const k in recBlob) decodeRec(k); }
-function playRec(k, fin) {
-  const b = recBuf[k], s = ac.createBufferSource(), g = ac.createGain();
-  s.buffer = b; g.gain.value = 1.6; s.connect(g); g.connect(voiceBus);
-  s.onended = fin; s.start(ac.currentTime + .02, recOff[k] || 0);
-  setTimeout(fin, (b.duration + .5) * 1000);
-}
-let recState = null;
-async function recToggle(k) {
-  if (recState) { const same = recState.k === k; recStop(); if (same) return; }
-  if (!navigator.mediaDevices || !window.MediaRecorder) { recMsg('Этот браузер не умеет записывать звук.'); return; }
-  try {
-    audio();
-    const blowWas = !!micB; if (blowWas) micEnable(false);
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-    const mr = new MediaRecorder(stream), chunks = [];
-    mr.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-    mr.onstop = () => {
-      stream.getTracks().forEach(t => t.stop());
-      const blob = new Blob(chunks, { type: mr.mimeType || 'audio/mp4' });
-      if (blob.size > 800) {
-        recBlob[k] = blob; delete recBuf[k]; decodeRec(k);
-        try { db.transaction('rec', 'readwrite').objectStore('rec').put(blob, k); } catch (e) {}
-      }
-      recState = null; applyMus(.3); renderRec();
-      if (blowWas) micEnable(true);
-    };
-    duck(true); musBus.gain.setTargetAtTime(0, ac.currentTime, .05);
-    mr.start(); recState = { k, mr, timer: setTimeout(recStop, 3000) }; renderRec();
-  } catch (e) { recState = null; renderRec(); recMsg('Нет доступа к микрофону. Разрешите его в настройках браузера.'); }
-}
-function recStop() { if (!recState) return; clearTimeout(recState.timer); try { recState.mr.stop(); } catch (e) { recState = null; } duck(false); }
-function recDel(k) { delete recBlob[k]; delete recBuf[k]; try { db.transaction('rec', 'readwrite').objectStore('rec').delete(k); } catch (e) {} renderRec(); }
 
 // =====================================================================
 //  ГРАФИКА: эмодзи и рисованные предметы, кэш картинок
@@ -2788,32 +2721,6 @@ addEventListener('keydown', e => { if (e.code === 'Space' && started && gm === '
 addEventListener('contextmenu', e => e.preventDefault());
 document.addEventListener('gesturestart', e => e.preventDefault());
 
-// ---------- подуть в микрофон ----------
-let micB = null;
-async function micEnable(on) {
-  if (!on) { if (micB) { micB.stream.getTracks().forEach(t => t.stop()); try { micB.src.disconnect(); } catch (e) {} if (blows.has('mic')) endBlow('mic'); } micB = null; return true; }
-  if (micB) return true;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
-    const src = audio().createMediaStreamSource(stream), an = ac.createAnalyser(), z = ac.createGain();
-    an.fftSize = 1024; z.gain.value = 0; src.connect(an); an.connect(z); z.connect(ac.destination);
-    micB = { stream, src, an, data: new Float32Array(1024), base: .01, quiet: 0 };
-    return true;
-  } catch (e) { return false; }
-}
-function micTick(dt) {
-  if (!micB || rested || gm !== 'learn') return;
-  micB.an.getFloatTimeDomainData(micB.data);
-  let s = 0; for (let i = 0; i < micB.data.length; i++) s += micB.data[i] * micB.data[i];
-  const rms = Math.sqrt(s / micB.data.length), thr = Math.max(.05, micB.base * 4), on = rms > thr;
-  if (!on) micB.base = micB.base * .98 + rms * .02;
-  let q = blows.get('mic');
-  if (on) {
-    micB.quiet = 0; touched();
-    if (!q) q = startBlow('mic', clamp(W * .5 + rnd(-W * .25, W * .25), 60, W - 60), H - BOT - M * .12, 0, 'mic');
-    q.t += dt * clamp(rms / thr, 1, 2.5) * .6;
-  } else if (q) { micB.quiet += dt; if (micB.quiet > .25) endBlow('mic'); }
-}
 // ---------- наклон устройства ----------
 let tiltRaw = 0;
 function onOri(e) {
@@ -2922,10 +2829,8 @@ holdBtn($('musb'), () => { S.musOff = !S.musOff; save(); applyMus(.2); updAud();
 updAud();
 let panelOpen = false;
 function openPanel() { closeModes(); panelOpen = true; $('panel').classList.add('on'); renderPanel(); }
-function closePanel() { panelOpen = false; recStop(); $('panel').classList.remove('on'); save(); }
+function closePanel() { panelOpen = false; $('panel').classList.remove('on'); save(); }
 $('panel').addEventListener('pointerdown', e => { if (e.target === $('panel')) closePanel(); });
-let recMode = 0, recNote = '';
-function recMsg(t) { recNote = t; renderRec(); }
 function el(tag, attrs, kids) { const e = document.createElement(tag); for (const k in attrs || {}) { if (k === 'on') for (const ev in attrs.on) e.addEventListener(ev, attrs.on[ev]); else if (k === 'text') e.textContent = attrs[k]; else e.setAttribute(k, attrs[k]); } (kids || []).forEach(c => c && e.appendChild(c)); return e; }
 function slider(label, val, min, max, step, set) {
   const i = el('input', { type: 'range', min, max, step, value: val }); i.addEventListener('input', () => set(+i.value));
@@ -2972,28 +2877,7 @@ function renderPanel() {
   p.appendChild(el('h3', { text: 'Управление' }));
   p.appendChild(sw('Кнопки режимов — по удержанию', S.hold, v => { S.hold = v; save(); }));
   p.appendChild(sw('Наклон устройства двигает пузыри', S.tilt, async v => { const ok = await tiltEnable(v); if (ok) { S.tilt = v; save(); } return ok; }));
-  p.appendChild(sw('Выдувать пузыри, дуя в микрофон', S.mic, async v => { const ok = await micEnable(v); if (ok) { S.mic = v; save(); } return ok; }));
-  p.appendChild(el('div', { class: 'note', text: 'Подуйте на телефон или планшет внизу экрана — появится пузырь. На iPhone при включённом микрофоне звук игры может стать тише.' }));
-  p.appendChild(el('h3', { text: 'Свой голос' }));
-  p.appendChild(el('div', { class: 'note', text: 'Запишите название своим голосом — ребёнок услышит вас вместо синтезатора. Нажмите ●, скажите слово, запись остановится сама через 3 секунды.' }));
-  const ms = el('div', { class: 'mchk', id: 'recmodes' });
-  MODES.forEach((m, k) => { const b = el('button', { text: m.ic, class: k === recMode ? 'on' : '' }); b.addEventListener('click', () => { recMode = k; renderPanel(); }); ms.appendChild(b); });
-  p.appendChild(ms);
-  p.appendChild(el('div', { id: 'reclist' }));
   p.appendChild(el('div', { class: 'foot', text: (XV && XV.credit ? XV.credit + '. ' : '') + 'Звуки зверей: BigSoundBank (CC0) через FunForge; волк, кит — betchkal, NPS (CC0, общественное достояние); медведь — NPS; курица, мышь, крылья, хруст — freesound (CC0) через conquest; хрюканье свиньи — erdie, CC BY 3.0. Инструменты: Versilian Community Sample Library и VS Chamber Orchestra CE (Versilian Studios, пианино — Simon Dalzell / Ivy Audio), гитара FreePats — все CC0. Бытовые звуки (дверь, посуда, страницы, вода, шаги, ключи) — freesound и OpenGameArt, CC0. Мяуканье и хлопок крышки — Ben Burnes (CC0); пчела, слон, обезьянка, оленёнок, белка, часть мяуканья, аккордеон, саксофон, банджо и губная гармошка — freesound.org (CC0). Шрифт Nunito — SIL Open Font License; хлопки и подводные пузырьки — «100 CC0 SFX» и «40 CC0 water/splash/slime SFX». Настройки и записи голоса хранятся только в этом браузере.' }));
-  renderRec();
-}
-function renderRec() {
-  const box = $('reclist'); if (!box) return; box.innerHTML = '';
-  if (recNote) box.appendChild(el('div', { class: 'note', text: recNote }));
-  MODES[recMode].d.forEach(it => {
-    const k = it[0], has = !!recBlob[k], live = recState && recState.k === k;
-    const c = el('canvas', { class: 'e' }); c.width = c.height = Math.round(34 * DPR); const x = c.getContext('2d'); x.scale(DPR, DPR); glyph(x, k, 17, 18, 27);
-    const r = el('button', { class: 'r' + (live ? ' on' : ''), text: live ? '■ Стоп' : '● Запись' }); r.addEventListener('click', () => recToggle(k));
-    const pl = el('button', { text: '▶' }); if (!has) pl.setAttribute('disabled', ''); pl.addEventListener('click', () => { audio(); if (recBuf[k]) say('', null, k); });
-    const dl = el('button', { text: '✕' }); if (!has) dl.setAttribute('disabled', ''); dl.addEventListener('click', () => recDel(k));
-    box.appendChild(el('div', { class: 'rec' }, [c, el('span', { class: 'n', text: it[1] }), r, pl, dl]));
-  });
 }
 // ---------- просмотр всех шариков ----------
 let galOpen = false, galMd = 0;
@@ -3046,13 +2930,12 @@ document.addEventListener('visibilitychange', () => {
 });
 // старт
 $('go').addEventListener('click', e => {
-  e.preventDefault(); if (started) return; audio(); unlockIOS(); speechUnlock(); wake(); loadAnim(); if (!XV) loadXIndex(); loadVoice('gx'); loadVoice('g' + md);
+  e.preventDefault(); if (started) return; audio(); unlockIOS(); wake(); loadAnim(); if (!XV) loadXIndex(); loadVoice('gx'); loadVoice('g' + md);
   setTimeout(() => MODES.forEach((m, i) => loadVoice('g' + i)), 6000);
   const de = document.documentElement, rf = de.requestFullscreen || de.webkitRequestFullscreen;
   if (rf && matchMedia('(pointer:coarse)').matches && !navigator.standalone) { try { const p = rf.call(de); if (p && p.catch) p.catch(() => {}); } catch (e2) {} }
   $('start').classList.remove('on'); started = true; touched();
   if (S.tilt) tiltEnable(true).then(ok => { if (!ok) S.tilt = false; });
-  if (S.mic) micEnable(true).then(ok => { if (!ok) S.mic = false; });
   const t1 = now(), go2 = () => { if (XV && S.voiceSrc === 'auto' && !xbuf.hi && now() - t1 < 3000) { setTimeout(go2, 100); return; } setMascot('happy', 1.6); if (gm === 'learn') sayK('hi'); else setGame(gm, false); };
   setTimeout(go2, 450);
 });
@@ -3137,7 +3020,6 @@ function frame(t) {
     if (!F2.hint && tb && now() - F2.t0 > 6500) { F2.hint = true; hand = { kind: 'tap', b: tb, t: 0 }; lookAt(tb.x, tb.y); setMascot('wow', 1.6); }
     if (now() - F2.lastSay > 9500 && now() - F2.t0 > 4000) { askTarget(); if (tb) { hand = { kind: 'tap', b: tb, t: 0 }; F2.hint = true; } }
   }
-  micTick(dt);
   // пузыри
   let miss = 0;
   for (let i = bubbles.length - 1; i >= 0; i--) {
@@ -3165,14 +3047,13 @@ function frame(t) {
   }
   // выдуваемые пузыри
   for (const [id, q] of blows) {
-    q.t += q.src === 'mic' ? 0 : dt;
+    q.t += dt;
     const mx = M * .19; q.r = Math.min(mx, M * (.03 + .16 * q.t));
     try { q.o.frequency.setTargetAtTime(260 + q.r / mx * 420, ac.currentTime, .05); } catch (e) {}
     const shl = shell(q.ci == null ? 0 : q.ci, M * .19, 'n'), sz = q.r / shl.rb * shl.L, w = Math.sin(q.t * 12) * .04;
     ctx.save(); ctx.translate(q.x, q.y + q.dy * q.r * .9); ctx.scale(1 + w, 1 - w); ctx.drawImage(shl.c, -sz / 2, -sz / 2, sz, sz); ctx.restore();
     if (q.r >= mx) endBlow(id);
   }
-  if (micB) { const y = H - BOT - M * .12; ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 3; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.arc(W / 2, y, M * .05 + Math.sin(t * .004) * 3, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
   drawFeeder(k);
   drawMascot(t, k);
   // вылетающие предметы
@@ -3246,7 +3127,7 @@ function frame(t) {
 }
 
 // ---------- запуск ----------
-renderModes(); updMbtn(); resize(); autoNight(); loadXIndex(); dbOpen(() => { if (ac) decodeRecs(); });
+renderModes(); updMbtn(); resize(); autoNight(); loadXIndex(); 
 for (let i = 0; i < 4; i++) spawn(true);
 requestAnimationFrame(loop);
 $('dn').textContent = night ? '☀️' : '🌙';
